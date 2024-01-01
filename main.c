@@ -11,7 +11,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#include "include/raylib.h"
+#include <raylib.h>
 
 int main( void ) {
 
