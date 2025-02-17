@@ -4,7 +4,7 @@
  * @brief Modelo para desenvolvimento de exercícios criativos usando a engine
  * de jogos Raylib (https://www.raylib.com/).
  * 
- * @copyright Copyright (c) 2024
+ * @copyright Copyright (c) 2025
  */
 
 #include <stdio.h>
