@@ -1,0 +1,27 @@
+Ferramentas (gcc, make e git):
+    sudo apt install build-essential git
+
+Bibliotecas:
+    Ubuntu:
+        sudo apt install libasound2-dev libx11-dev libxrandr-dev libxi-dev libgl1-mesa-dev libglu1-mesa-dev libxcursor-dev libxinerama-dev libwayland-dev libxkbcommon-dev
+
+    Fedora:
+        sudo dnf install alsa-lib-devel mesa-libGL-devel libX11-devel libXrandr-devel libXi-devel libXcursor-devel libXinerama-devel libatomic
+        
+    Arch Linux:
+        sudo pacman -S alsa-lib mesa libx11 libxrandr libxi libxcursor libxinerama
+        
+    Void Linux:
+        sudo xbps-install make alsa-lib-devel libglvnd-devel libX11-devel libXrandr-devel libXi-devel libXcursor-devel libXinerama-devel mesa MesaLib-devel
+        
+        Drivers intel:
+            sudo xbps-install mesa-dri mesa-intel-dri
+            
+Instalar Raylib (Ubuntu):
+    Repositório: https://launchpad.net/~texus/+archive/ubuntu/raylib
+    Discussão: https://github.com/raysan5/raylib/discussions/2673
+    sudo add-apt-repository ppa:texus/raylib
+    sudo apt install libraylib5-dev
+    
+Nas outras distribuições, seguir a recomendação do tutorial da Wiki da Raylib:
+    https://github.com/raysan5/raylib/wiki/Working-on-GNU-Linux
