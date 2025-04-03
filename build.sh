@@ -42,7 +42,11 @@ compile_project() {
 
 run_project() {
     echo "Running..."
-    ./$CompiledFile
+    if [ -e $CompiledFile ]; then
+        ./$CompiledFile
+    else
+        echo "$CompiledFile does not exists!"
+    fi
 }
 
 if [ $# -eq 0 ]; then
