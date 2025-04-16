@@ -1,4 +1,4 @@
-Ferramentas (gcc, make e git):
+Instalar ferramentas (gcc, make e git):
     sudo apt install build-essential git
 
 Bibliotecas:
@@ -18,10 +18,11 @@ Bibliotecas:
             sudo xbps-install mesa-dri mesa-intel-dri
             
 Instalar Raylib (Ubuntu):
-    Repositório: https://launchpad.net/~texus/+archive/ubuntu/raylib
-    Discussão: https://github.com/raysan5/raylib/discussions/2673
     sudo add-apt-repository ppa:texus/raylib
     sudo apt install libraylib5-dev
+
+    Repositório: https://launchpad.net/~texus/+archive/ubuntu/raylib
+    Discussão: https://github.com/raysan5/raylib/discussions/2673
     
 Nas outras distribuições, seguir a recomendação do tutorial da Wiki da Raylib:
     https://github.com/raysan5/raylib/wiki/Working-on-GNU-Linux

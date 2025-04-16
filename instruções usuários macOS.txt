@@ -1,0 +1,15 @@
+No macOS a forma mais fácil de conseguir usar a Raylib é realizando a construção
+da engine localmente e copiando o arquivo compilado para dentro deste projeto.
+
+Vamos aos passos:
+
+    1) Baixar o arquivo https://github.com/raysan5/raylib/archive/master.zip
+    2) Descompactar o arquivo baixado;
+    3) Abrir um terminal e acessar a pasta gerada ao descompactar o arquivo;
+    4) No terminal acessar a pasta "src";
+    5) Usar o comando "make PLATFORM=PLATFORM_DESKTOP" (sem as aspas) para
+       realizar a construção;
+    6) Caso tudo dê certo, copiar o arquivo "libraylib.a" gerado na pasta src
+       para a pasta "lib" deste projeto, sobrescrevendo o arquivo atual;
+    7) Utilizar o arquivo buildMacOS.sh para realizar a compilação do exercício
+       criativo desejado.
