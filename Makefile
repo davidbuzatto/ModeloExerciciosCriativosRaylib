@@ -84,14 +84,113 @@ endif
 # not need to invoke the shell.
 #
 # $(subst \,/,...) normalises Windows backslashes to forward slashes so that
-# $(notdir ...) works correctly on every platform.
+# path handling works consistently on every platform.
 #
-# $(notdir ...) extracts only the last path component (the project directory
-# name), discarding the rest of the absolute path.
+# Handling spaces in the project path
+# ------------------------------------
+# make treats whitespace as a separator between "words". A naive
+# $(notdir $(CURDIR)) on a path like "/c/foo/test platform game"
+# would be interpreted as several separate items ("test", "platform",
+# "game"), and using them as a target would cause make to build
+# one executable per word (test.exe, platform.exe, ...). This happens
+# both when a parent directory and when the project directory itself
+# contain spaces.
+#
+# To work around this limitation we follow a three-step substitution:
+#   1. Replace every literal space in the path with a unique placeholder
+#      token (__SP__) that make cannot mistake for a separator.
+#   2. Run $(notdir ...) on the escaped path to extract the last component.
+#   3. Replace the placeholder with an underscore in the resulting name,
+#      producing a single-word executable name that make handles safely.
+#
+# The `space` variable is a classic make idiom: concatenating two empty
+# variables with a literal space between them yields exactly one space,
+# which can then be used as the "from" argument of $(subst ...).
 #
 # On Windows, GCC expects ".exe" in the output binary name.
 # -----------------------------------------------------------------------------
-TARGET_NAME := $(notdir $(subst \,/,$(CURDIR)))
+empty :=
+space := $(empty) $(empty)
+
+# Normalise slashes, then escape spaces with a placeholder before notdir.
+__ESCAPED_PATH := $(subst $(space),__SP__,$(subst \,/,$(CURDIR)))
+
+# Extract the directory name from the escaped path, then unescape using '_'.
+# The resulting TARGET_NAME is always a single make word (no embedded spaces).
+TARGET_NAME := $(subst __SP__,_,$(notdir $(__ESCAPED_PATH)))
+
+# Sanitize accented characters in TARGET_NAME
+# -------------------------------------------
+# When the project path contains accented letters (common in Portuguese,
+# e.g. "espaços", "Área de Trabalho"), the UTF-8 bytes of those letters
+# traverse several layers on their way to GCC (make -> cmd.exe -> GCC ->
+# filesystem), and on Windows they may be reinterpreted under a different
+# codepage (CP850 / CP1252), producing mojibake in the resulting file
+# name. The `make run` target would then try to execute the original UTF-8
+# name while the actual file on disk has different bytes, and the launch
+# fails.
+#
+# The safest cross-platform fix is to strip accents from TARGET_NAME,
+# mapping each accented letter to its plain ASCII equivalent. The resulting
+# executable name contains only ASCII characters, which every toolchain
+# handles consistently regardless of the active codepage.
+#
+# Technical note: this works because this Makefile is saved as UTF-8, so
+# the literal "ç" below is stored as the same two bytes (0xC3 0xA7) that
+# appear in $(CURDIR). If you ever re-save this file in a legacy encoding
+# (e.g. Windows-1252), the matches will stop working. Stick to UTF-8.
+#
+# If your language needs letters that are not listed below, just append
+# another `TARGET_NAME := $(subst <letter>,<replacement>,$(TARGET_NAME))`
+# line. The order does not matter.
+TARGET_NAME := $(subst á,a,$(TARGET_NAME))
+TARGET_NAME := $(subst à,a,$(TARGET_NAME))
+TARGET_NAME := $(subst ã,a,$(TARGET_NAME))
+TARGET_NAME := $(subst â,a,$(TARGET_NAME))
+TARGET_NAME := $(subst ä,a,$(TARGET_NAME))
+TARGET_NAME := $(subst é,e,$(TARGET_NAME))
+TARGET_NAME := $(subst è,e,$(TARGET_NAME))
+TARGET_NAME := $(subst ê,e,$(TARGET_NAME))
+TARGET_NAME := $(subst ë,e,$(TARGET_NAME))
+TARGET_NAME := $(subst í,i,$(TARGET_NAME))
+TARGET_NAME := $(subst ì,i,$(TARGET_NAME))
+TARGET_NAME := $(subst î,i,$(TARGET_NAME))
+TARGET_NAME := $(subst ï,i,$(TARGET_NAME))
+TARGET_NAME := $(subst ó,o,$(TARGET_NAME))
+TARGET_NAME := $(subst ò,o,$(TARGET_NAME))
+TARGET_NAME := $(subst õ,o,$(TARGET_NAME))
+TARGET_NAME := $(subst ô,o,$(TARGET_NAME))
+TARGET_NAME := $(subst ö,o,$(TARGET_NAME))
+TARGET_NAME := $(subst ú,u,$(TARGET_NAME))
+TARGET_NAME := $(subst ù,u,$(TARGET_NAME))
+TARGET_NAME := $(subst û,u,$(TARGET_NAME))
+TARGET_NAME := $(subst ü,u,$(TARGET_NAME))
+TARGET_NAME := $(subst ç,c,$(TARGET_NAME))
+TARGET_NAME := $(subst ñ,n,$(TARGET_NAME))
+TARGET_NAME := $(subst Á,A,$(TARGET_NAME))
+TARGET_NAME := $(subst À,A,$(TARGET_NAME))
+TARGET_NAME := $(subst Ã,A,$(TARGET_NAME))
+TARGET_NAME := $(subst Â,A,$(TARGET_NAME))
+TARGET_NAME := $(subst Ä,A,$(TARGET_NAME))
+TARGET_NAME := $(subst É,E,$(TARGET_NAME))
+TARGET_NAME := $(subst È,E,$(TARGET_NAME))
+TARGET_NAME := $(subst Ê,E,$(TARGET_NAME))
+TARGET_NAME := $(subst Ë,E,$(TARGET_NAME))
+TARGET_NAME := $(subst Í,I,$(TARGET_NAME))
+TARGET_NAME := $(subst Ì,I,$(TARGET_NAME))
+TARGET_NAME := $(subst Î,I,$(TARGET_NAME))
+TARGET_NAME := $(subst Ï,I,$(TARGET_NAME))
+TARGET_NAME := $(subst Ó,O,$(TARGET_NAME))
+TARGET_NAME := $(subst Ò,O,$(TARGET_NAME))
+TARGET_NAME := $(subst Õ,O,$(TARGET_NAME))
+TARGET_NAME := $(subst Ô,O,$(TARGET_NAME))
+TARGET_NAME := $(subst Ö,O,$(TARGET_NAME))
+TARGET_NAME := $(subst Ú,U,$(TARGET_NAME))
+TARGET_NAME := $(subst Ù,U,$(TARGET_NAME))
+TARGET_NAME := $(subst Û,U,$(TARGET_NAME))
+TARGET_NAME := $(subst Ü,U,$(TARGET_NAME))
+TARGET_NAME := $(subst Ç,C,$(TARGET_NAME))
+TARGET_NAME := $(subst Ñ,N,$(TARGET_NAME))
 
 ifeq ($(IS_WINDOWS), 1)
     TARGET_EXEC := $(TARGET_NAME).exe
