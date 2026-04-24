@@ -1,84 +1,374 @@
-# make build script.
-# based on: https://makefiletutorial.com/
+# =============================================================================
+# Cross-platform Makefile for C/C++ projects with raylib
+# Based on:
+#   https://makefiletutorial.com/
+#   https://spin.atomicobject.com/2016/08/26/makefile-c-projects/
 #
-# usage:
-#    make: compile the project and run the compiled file
-#    make clean: clean compiled file
-#    make cleanAndCompile: clean compiled file and compile the project
-#    make compile: compile the project
-#    make run: run the compiled file
+# Usage:
+#   make               - compile and run the project
+#   make compile       - compile the project only
+#   make run           - run the compiled binary only
+#   make clean         - remove build artifacts
+#   make cleanAndCompile - clean and recompile from scratch
 #
-# author: Prof. Dr. David Buzatto
+# Compatible with: Linux, macOS and Windows (MSYS2 and native cmd.exe/MinGW)
+# Author: Prof. Dr. David Buzatto
+# =============================================================================
 
-# Thanks to Job Vranish (https://spin.atomicobject.com/2016/08/26/makefile-c-projects/)
-TARGET_EXEC := $(lastword $(notdir $(shell pwd)))
 
-BUILD_DIR := ./build
-SRC_DIRS := ./
-PLATFORM := $(shell uname)
+# -----------------------------------------------------------------------------
+# OPERATING SYSTEM DETECTION
+#
+# Detection here must handle a subtle detail: MSYS2 filters out some Windows
+# environment variables (such as OS=Windows_NT) before passing them to make.
+# Therefore $(OS) is available in native cmd.exe but NOT in MSYS2. We start
+# with `uname -s`, which works on Linux, macOS and any Unix-like shell on
+# Windows (MSYS2, Cygwin, Git Bash). If uname is not available (pure cmd.exe),
+# the string comes back empty and we fall through to the $(OS) test to detect
+# native Windows.
+#
+# We classify into four distinct environments:
+#   - Linux          : native Linux
+#   - macOS          : macOS (Darwin)
+#   - Windows_MSYS2  : Windows running inside a Unix shell (MSYS2, Cygwin,
+#                      Git Bash). Unix commands (mkdir -p, rm -rf) work;
+#                      binary has .exe extension.
+#   - Windows_Native : Windows running in cmd.exe without a Unix layer. Needs
+#                      cmd commands (if not exist, rmdir /s /q); binary is .exe.
+#
+# IS_WINDOWS is a derived flag used further below to decide whether to append
+# ".exe" to the executable name.
+# -----------------------------------------------------------------------------
+UNAME_S := $(shell uname -s 2>/dev/null)
 
-all: compile run
-compile: $(BUILD_DIR)/$(TARGET_EXEC)
-cleanAndCompile: clean compile
-
-# Find all the C and C++ files we want to compile
-# Note the single quotes around the * expressions. The shell will incorrectly expand these otherwise, but we want to send the * directly to the find command.
-SRCS := $(shell find $(SRC_DIRS) -name '*.cpp' -or -name '*.c' -or -name '*.s')
-
-# Prepends BUILD_DIR and appends .o to every src file
-# As an example, ./your_dir/hello.cpp turns into ./build/./your_dir/hello.cpp.o
-OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
-
-# String substitution (suffix version without %).
-# As an example, ./build/hello.cpp.o turns into ./build/hello.cpp.d
-DEPS := $(OBJS:.o=.d)
-
-# Every folder in ./src will need to be passed to GCC so that it can find header files
-INC_DIRS := $(shell find $(SRC_DIRS) -type d)
-# Add a prefix to INC_DIRS. So moduleA would become -ImoduleA. GCC understands this -I flag
-INC_FLAGS := $(addprefix -I,$(INC_DIRS))
-
-# C flags
-# The -MMD and -MP flags together generate Makefiles for us!
-# These files will have .d instead of .o as the output.
-CFLAGS := $(INC_FLAGS) -MMD -MP -O1 -Wall -Wextra -Wno-unused-parameter -pedantic-errors -std=c99 -Wno-missing-braces
-
-# C++ flags
-# The -MMD and -MP flags together generate Makefiles for us!
-# These files will have .d instead of .o as the output.
-CPPFLAGS := $(INC_FLAGS) -MMD -MP -O1 -Wall -Wextra -Wno-unused-parameter -pedantic-errors -std=c++20 -Wno-missing-braces
-
-# Linker flags
-ifeq ($(PLATFORM), Linux)
-LDFLAGS := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+ifeq ($(UNAME_S), Linux)
+    DETECTED_OS := Linux
+    IS_WINDOWS  := 0
+else ifeq ($(UNAME_S), Darwin)
+    DETECTED_OS := macOS
+    IS_WINDOWS  := 0
+else ifneq ($(filter MINGW% MSYS% CYGWIN%, $(UNAME_S)),)
+    # uname returns strings like "MINGW64_NT-10.0-19045", "MSYS_NT-..." or
+    # "CYGWIN_NT-..." when running inside a Unix shell on top of Windows.
+    DETECTED_OS := Windows_MSYS2
+    IS_WINDOWS  := 1
+else ifeq ($(OS), Windows_NT)
+    # No uname available, but $(OS) reached make: native cmd.exe.
+    DETECTED_OS := Windows_Native
+    IS_WINDOWS  := 1
 else
-LDFLAGS := -L lib/ -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+    DETECTED_OS := Unknown
+    IS_WINDOWS  := 0
 endif
 
-# The final build step.
-$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
-	$(CXX) $(OBJS) -o $@ $(LDFLAGS)
+# -----------------------------------------------------------------------------
+# FORCE SHELL ON NATIVE WINDOWS
+#
+# On native Windows, if a `sh.exe` is on the PATH (very common when Git is
+# installed), GNU Make tends to pick it automatically as the execution shell.
+# This would break our recipes written in cmd syntax (if not exist,
+# rmdir /s /q). To guarantee cmd.exe is used, we explicitly set SHELL and
+# SHELLFLAGS in this case.
+# -----------------------------------------------------------------------------
+ifeq ($(DETECTED_OS), Windows_Native)
+    SHELL       := cmd.exe
+    .SHELLFLAGS := /C
+endif
 
-# Build step for C source
+
+# -----------------------------------------------------------------------------
+# EXECUTABLE NAME
+#
+# $(CURDIR) is a GNU Make built-in variable holding the absolute path of the
+# current directory. It is more portable than `$(shell pwd)` because it does
+# not need to invoke the shell.
+#
+# $(subst \,/,...) normalises Windows backslashes to forward slashes so that
+# $(notdir ...) works correctly on every platform.
+#
+# $(notdir ...) extracts only the last path component (the project directory
+# name), discarding the rest of the absolute path.
+#
+# On Windows, GCC expects ".exe" in the output binary name.
+# -----------------------------------------------------------------------------
+TARGET_NAME := $(notdir $(subst \,/,$(CURDIR)))
+
+ifeq ($(IS_WINDOWS), 1)
+    TARGET_EXEC := $(TARGET_NAME).exe
+else
+    TARGET_EXEC := $(TARGET_NAME)
+endif
+
+
+# -----------------------------------------------------------------------------
+# MAIN DIRECTORIES
+# -----------------------------------------------------------------------------
+BUILD_DIR := build
+SRC_DIRS  := src
+
+
+# -----------------------------------------------------------------------------
+# HELPER FUNCTION: RECURSIVE FILE SEARCH (rwildcard)
+#
+# Replaces the Unix shell `find` command, which is unavailable on native
+# Windows. Implemented in pure make (no shell invocation), so it works on
+# every supported platform.
+#
+# Usage: $(call rwildcard, ROOT_DIRECTORY, SPACE-SEPARATED_PATTERNS)
+#   Example: $(call rwildcard, src, *.c *.cpp)
+#
+# Step-by-step explanation:
+#   $(wildcard $(1:=/*))         → lists all items (files and directories)
+#                                   directly inside directory $(1).
+#                                   The ":=/*" suffix appends "/*" to the
+#                                   directory name to form the correct pattern.
+#   $(call rwildcard, $d, $2)    → recursive call for each item $d.
+#                                   Make keeps descending into subdirectories
+#                                   until nothing more is found.
+#   $(filter $(subst *,%,$2),$d) → filters item $d against the patterns in $2.
+#                                   Make uses % where the shell uses *, so
+#                                   $(subst *,%, ...) converts before calling
+#                                   $(filter ...).
+#   $(foreach d, LIST, EXPR)     → iterates over each item in LIST, expanding
+#                                   EXPR with $d replaced by the current item.
+#                                   Concatenates all results with spaces.
+# -----------------------------------------------------------------------------
+rwildcard = $(foreach d,$(wildcard $(1:=/*)),\
+                $(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
+
+
+# -----------------------------------------------------------------------------
+# SOURCE FILES
+#
+# Collects all .c, .cpp and .s files inside SRC_DIRS, at any subdirectory
+# depth, without relying on the shell `find` command.
+# -----------------------------------------------------------------------------
+SRCS := $(call rwildcard,$(SRC_DIRS),*.c *.cpp *.s)
+
+
+# -----------------------------------------------------------------------------
+# OBJECT AND DEPENDENCY FILES
+#
+# For each source file, an object file (.o) is created inside BUILD_DIR,
+# preserving the original subdirectory structure.
+# Example:  src/GameWorld.c  →  build/src/GameWorld.c.o
+#
+# The substitution operator $(SRCS:%=$(BUILD_DIR)/%.o) applies the pattern
+# "BUILD_DIR/ prefix + original value + .o suffix" to every item in SRCS.
+#
+# The .d files record the dependencies of each .o on the headers (#include)
+# used by the corresponding source file. They are generated automatically by
+# the -MMD and -MP flags of GCC/Clang during compilation. By including them
+# at the end of this Makefile (via -include $(DEPS)), Make learns to recompile
+# a .c file whenever any .h it includes changes.
+# -----------------------------------------------------------------------------
+OBJS := $(SRCS:%=$(BUILD_DIR)/%.o)
+DEPS := $(OBJS:.o=.d)
+
+
+# -----------------------------------------------------------------------------
+# INCLUDE DIRECTORIES (headers)
+#
+# $(call rwildcard, SRC_DIRS, *) returns ALL files under SRC_DIRS, including
+# .h files in subdirectories such as src/include/. The * pattern matches any
+# filename.
+#
+# $(dir FILE) extracts the directory portion of each returned path.
+# Example: src/include/Foo.h  →  src/include/
+#
+# $(sort LIST) sorts and removes duplicates (each directory appears once).
+#
+# $(addprefix -I, LIST) prepends "-I" to each directory. This flag is passed
+# to the compiler so it can locate .h files during compilation.
+# -----------------------------------------------------------------------------
+INC_DIRS  := $(sort $(dir $(call rwildcard,$(SRC_DIRS),*)))
+INC_FLAGS := $(addprefix -I,$(INC_DIRS))
+
+
+# -----------------------------------------------------------------------------
+# COMPILER FLAGS
+#
+# $(INC_FLAGS)           : include paths (-Isrc/ -Isrc/include/ ...)
+# -MMD -MP               : generate automatic .d dependency files
+# -O1                    : basic optimisation (good balance between build
+#                          speed and final binary performance)
+# -Wall                  : enable the main set of compiler warnings
+# -Wextra                : enable additional warnings beyond -Wall
+# -Wno-unused-parameter  : suppress unused-parameter warnings
+#                          (common in raylib callbacks and event handlers)
+# -pedantic-errors       : treat any non-standard extension as an error
+# -std=c99               : follow the ISO C99 standard for .c files
+# -std=c++20             : follow the ISO C++20 standard for .cpp files
+# -Wno-missing-braces    : suppress false positives with nested initializer
+#                          lists in certain GCC versions
+# -----------------------------------------------------------------------------
+CFLAGS   := $(INC_FLAGS) -MMD -MP -O1 -Wall -Wextra \
+             -Wno-unused-parameter -pedantic-errors \
+             -std=c99 -Wno-missing-braces
+
+CPPFLAGS := $(INC_FLAGS) -MMD -MP -O1 -Wall -Wextra \
+             -Wno-unused-parameter -pedantic-errors \
+             -std=c++20 -Wno-missing-braces
+
+
+# -----------------------------------------------------------------------------
+# LINKER FLAGS (platform-dependent)
+#
+# Linux         : raylib installed system-wide (e.g. via apt/pacman).
+#                 Requires OpenGL (GL), pthreads, X11 and other system libs.
+#
+# macOS         : raylib installed system-wide (e.g. via Homebrew).
+#                 Uses native Apple frameworks instead of standalone libs.
+#                 -framework OpenGL      : 3D/2D rendering
+#                 -framework Cocoa       : windows and macOS events
+#                 -framework IOKit       : device input (keyboard, mouse)
+#                 -framework CoreVideo   : video synchronisation (VSync)
+#
+# Windows (both): raylib provided as a static library in lib/libraylib.a.
+#                 -L lib/    : add lib/ as a library search directory
+#                 -lopengl32 : OpenGL on Windows
+#                 -lgdi32    : GDI (Win32 graphics functions)
+#                 -lwinmm    : Windows Multimedia (audio)
+# -----------------------------------------------------------------------------
+ifeq ($(DETECTED_OS), Linux)
+    LDFLAGS := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+else ifeq ($(DETECTED_OS), macOS)
+    LDFLAGS := -lraylib -framework OpenGL -framework Cocoa \
+               -framework IOKit -framework CoreVideo -lm
+else
+    # Windows (MSYS2 or native) — raylib from local lib/
+    LDFLAGS := -L lib/ -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+endif
+
+
+# -----------------------------------------------------------------------------
+# PLATFORM-DEPENDENT SHELL COMMANDS
+#
+# Command-line tools differ between native Windows cmd.exe and Unix
+# environments (Linux, macOS, MSYS2).
+#
+# MKDIR is a make function called with $(call MKDIR, DIRECTORY):
+#   Unix    : mkdir -p <dir>
+#               Creates the directory and all required parents.
+#               Does not error if the directory already exists (-p).
+#   Windows : if not exist "<dir>" mkdir "<dir>"
+#               "if not exist" avoids "directory already exists" errors.
+#               cmd's mkdir creates parent directories automatically.
+#               $(subst /,\,...) converts forward slashes to backslashes
+#               (required by cmd.exe).
+#
+# RM_ALL removes the build directory and all its contents:
+#   Unix    : rm -rf build
+#   Windows : rmdir /s /q build    (/s = include subdirectories, /q = no prompt)
+#             "if exist" check prevents errors when build does not exist yet.
+#
+# RUN executes the compiled binary:
+#   Unix    : ./build/TARGET        (relative Unix path with ./)
+#   Windows : build\TARGET.exe      (backslash path for cmd.exe)
+# -----------------------------------------------------------------------------
+ifeq ($(DETECTED_OS), Windows_Native)
+    MKDIR  = if not exist "$(subst /,\,$(1))" mkdir "$(subst /,\,$(1))"
+    RM_ALL = if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)
+    RUN    = $(subst /,\,$(BUILD_DIR)/$(TARGET_EXEC))
+else
+    # Linux, macOS and Windows_MSYS2 — all have Unix tools available
+    MKDIR  = mkdir -p $(1)
+    RM_ALL = rm -rf $(BUILD_DIR)
+    RUN    = ./$(BUILD_DIR)/$(TARGET_EXEC)
+endif
+
+
+# =============================================================================
+# TARGETS
+# =============================================================================
+
+# .PHONY declares targets that do NOT correspond to real files on disk.
+# Without this declaration, if a file named "clean" or "run" existed in the
+# directory, Make would consider the target already up to date and execute
+# nothing. With .PHONY, Make always runs the recipes for these targets.
+.PHONY: all compile run clean cleanAndCompile
+
+# Default target (executed with plain `make`): compile then run.
+all: compile run
+
+# compile: produces the final binary. Delegates to the link rule below.
+compile: $(BUILD_DIR)/$(TARGET_EXEC)
+
+# cleanAndCompile: removes previous build artifacts then recompiles everything.
+cleanAndCompile: clean compile
+
+
+# -----------------------------------------------------------------------------
+# FINAL LINK RULE
+#
+# This rule fires when the final binary needs to be (re)created, i.e. when
+# any .o file was modified or the binary does not exist yet.
+#
+# Automatic variables used:
+#   $@  = target name of this rule = the final executable
+#         (e.g. build/jogo-plataforma-aula-05  or  build/jogo-plataforma-aula-05.exe)
+#   $^  = full list of prerequisites = all .o files listed in $(OBJS)
+#
+# $(CXX) (C++ compiler) is used for linking even in purely C projects.
+# This is safe in mixed C/C++ projects and works equally well for 100% C
+# projects. Using $(CC) (C compiler) is also valid as long as no .cpp files
+# are present.
+# -----------------------------------------------------------------------------
+$(BUILD_DIR)/$(TARGET_EXEC): $(OBJS)
+	$(call MKDIR,$(BUILD_DIR))
+	$(CXX) $^ -o $@ $(LDFLAGS)
+
+
+# -----------------------------------------------------------------------------
+# COMPILATION RULE FOR C FILES
+#
+# The pattern "$(BUILD_DIR)/%.c.o: %.c" matches any .c file in SRCS and
+# defines how to generate the corresponding .o inside BUILD_DIR.
+#
+# Automatic variables used:
+#   $<   = first prerequisite = the .c file being compiled
+#   $@   = target name = the .o file being generated
+#   $(@D) = target directory (e.g. build/src) — created before compiling
+#            to ensure the destination folder exists
+# -----------------------------------------------------------------------------
 $(BUILD_DIR)/%.c.o: %.c
-	mkdir -p $(dir $@)
+	$(call MKDIR,$(@D))
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Build step for C++ source
+
+# -----------------------------------------------------------------------------
+# COMPILATION RULE FOR C++ FILES
+# (same logic as the C rule, but uses $(CXX) and $(CPPFLAGS))
+# -----------------------------------------------------------------------------
 $(BUILD_DIR)/%.cpp.o: %.cpp
-	mkdir -p $(dir $@)
+	$(call MKDIR,$(@D))
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -c $< -o $@
 
 
-.PHONY: clean
+# -----------------------------------------------------------------------------
+# clean TARGET: removes the build directory and all generated artifacts
+#
+# The @ prefix before the command suppresses its display in the terminal.
+# Without it, Make would print the command before executing it. With @, only
+# the command's output (if any) is shown.
+# -----------------------------------------------------------------------------
 clean:
-	@rm -f -r $(BUILD_DIR)
+	@$(RM_ALL)
 
-.PHONY: run
+
+# -----------------------------------------------------------------------------
+# run TARGET: executes the compiled binary
+# -----------------------------------------------------------------------------
 run:
-	./$(BUILD_DIR)/$(TARGET_EXEC)
+	$(RUN)
 
-# Include the .d makefiles. The - at the front suppresses the errors of missing
-# Makefiles. Initially, all the .d files will be missing, and we don't want those
-# errors to show up.
+
+# -----------------------------------------------------------------------------
+# DEPENDENCY FILE INCLUSION (.d files)
+#
+# The - (hyphen) prefix tells Make to ignore errors if any .d file does not
+# exist. This happens normally on the first build, when no .d files have been
+# generated yet. After the first build, the .d files exist and are included
+# here, making Make aware of header-level dependencies.
+# -----------------------------------------------------------------------------
 -include $(DEPS)
