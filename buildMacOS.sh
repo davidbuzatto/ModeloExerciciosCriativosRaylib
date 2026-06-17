@@ -22,7 +22,7 @@ clean_project() {
 
 compile_project() {
     echo "Compiling..."
-    cc main.c -o $CompiledFile \
+    cc src/*.c -o $CompiledFile \
         -O1 \
         -Wall \
         -Wextra \
@@ -31,11 +31,15 @@ compile_project() {
         -std=c99 \
         -Wno-missing-braces \
         -I src/include/ \
-        -L lib \
+        -L lib/macos/ \
         -lraylib \
-        -framework IOKit \
+        -framework OpenGL \
         -framework Cocoa \
-        -framework OpenGL 
+        -framework IOKit \
+        -framework CoreVideo \
+        -framework CoreAudio \
+        -framework AudioToolbox \
+        -lm
 }
 
 run_project() {

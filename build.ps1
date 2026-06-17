@@ -1,4 +1,4 @@
-# Custom build script.
+# Custom build script (windows powershell).
 #
 # Usage:
 #    .\build.ps1: clean, compile and run
@@ -37,15 +37,16 @@ if ( $clean -or $cleanAndCompile -or $all ) {
 # compile
 if ( $compile -or $cleanAndCompile -or $compileAndRun -or $all ) {
     Write-Host "Compiling..."
-    gcc main.c -o $CompiledFile `
+    gcc src/*.c -o $CompiledFile `
         -O1 `
         -Wall `
         -Wextra `
+        -Wno-unused-parameter `
         -pedantic-errors `
         -std=c99 `
         -Wno-missing-braces `
-        -I include/ `
-        -L lib/ `
+        -I src/include/ `
+        -L lib/win64_mingw-w64/ `
         -lraylib `
         -lopengl32 `
         -lgdi32 `

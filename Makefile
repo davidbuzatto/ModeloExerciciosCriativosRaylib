@@ -313,30 +313,36 @@ CPPFLAGS := $(INC_FLAGS) -MMD -MP -O1 -Wall -Wextra \
 # -----------------------------------------------------------------------------
 # LINKER FLAGS (platform-dependent)
 #
-# Linux         : raylib installed system-wide (e.g. via apt/pacman).
+# raylib is bundled as a static library, one per platform, under
+# lib/<platform>/. No system-wide raylib installation is required; each build
+# links against the matching local libraylib.a.
+#
+# Linux         : lib/linux_amd64/libraylib.a
 #                 Requires OpenGL (GL), pthreads, X11 and other system libs.
 #
-# macOS         : raylib installed system-wide (e.g. via Homebrew).
+# macOS         : lib/macos/libraylib.a
 #                 Uses native Apple frameworks instead of standalone libs.
-#                 -framework OpenGL      : 3D/2D rendering
-#                 -framework Cocoa       : windows and macOS events
-#                 -framework IOKit       : device input (keyboard, mouse)
-#                 -framework CoreVideo   : video synchronisation (VSync)
+#                 -framework OpenGL       : 3D/2D rendering
+#                 -framework Cocoa        : windows and macOS events
+#                 -framework IOKit        : device input (keyboard, mouse)
+#                 -framework CoreVideo    : video synchronisation (VSync)
+#                 -framework CoreAudio    : audio backend (miniaudio)
+#                 -framework AudioToolbox : audio backend (miniaudio)
 #
-# Windows (both): raylib provided as a static library in lib/libraylib.a.
-#                 -L lib/    : add lib/ as a library search directory
+# Windows (both): lib/win64_mingw-w64/libraylib.a (MinGW-w64 build).
 #                 -lopengl32 : OpenGL on Windows
 #                 -lgdi32    : GDI (Win32 graphics functions)
 #                 -lwinmm    : Windows Multimedia (audio)
 # -----------------------------------------------------------------------------
 ifeq ($(DETECTED_OS), Linux)
-    LDFLAGS := -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
+    LDFLAGS := -L lib/linux_amd64/ -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 else ifeq ($(DETECTED_OS), macOS)
-    LDFLAGS := -lraylib -framework OpenGL -framework Cocoa \
-               -framework IOKit -framework CoreVideo -lm
+    LDFLAGS := -L lib/macos/ -lraylib -framework OpenGL -framework Cocoa \
+               -framework IOKit -framework CoreVideo \
+               -framework CoreAudio -framework AudioToolbox -lm
 else
-    # Windows (MSYS2 or native) — raylib from local lib/
-    LDFLAGS := -L lib/ -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+    # Windows (MSYS2 or native) — raylib from local lib/win64_mingw-w64/
+    LDFLAGS := -L lib/win64_mingw-w64/ -lraylib -lopengl32 -lgdi32 -lwinmm -lm
 endif
 
 

@@ -22,7 +22,7 @@ clean_project() {
 
 compile_project() {
     echo "Compiling..."
-    gcc main.c -o $CompiledFile \
+    gcc src/*.c -o $CompiledFile \
         -O1 \
         -Wall \
         -Wextra \
@@ -31,6 +31,7 @@ compile_project() {
         -std=c99 \
         -Wno-missing-braces \
         -I src/include/ \
+        -L lib/linux_amd64/ \
         -lraylib \
         -lGL \
         -lm \
